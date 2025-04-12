@@ -76,8 +76,10 @@ class GameEngine {
     }
 
     // Calculate update interval based on game speed
-    // Base: 3000ms (3 seconds) for speed 1x
-    const updateInterval = 3000 / gameSpeed;
+    // We want one month to take 2 minutes (120,000ms) at 1x speed
+    // At faster speeds, we'll divide this time accordingly
+    const baseMonthDuration = 120000; // 2 minutes in milliseconds
+    const updateInterval = baseMonthDuration / gameSpeed;
 
     // Set up interval for game updates
     this.intervalId = setInterval(() => this.update(), updateInterval);
