@@ -253,7 +253,7 @@ const Management = () => {
                 fullWidth
               />
               <Typography variant="body2" gutterBottom>
-                Cost: ${employeeCost.toLocaleString()} (${17000.toLocaleString()} per employee)
+                Cost: ${employeeCost.toLocaleString()} (${(17000).toLocaleString()} per employee)
               </Typography>
               <Button 
                 variant="contained" 
