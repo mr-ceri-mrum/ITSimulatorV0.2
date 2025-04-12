@@ -41,9 +41,9 @@ import Settings from '../Settings/Settings';
 import Notifications from '../Notifications/Notifications';
 import GameControls from '../GameControls/GameControls';
 
-import { selectGamePaused, selectGameSpeed, selectUnreadNotifications } from '../../store/gameSlice';
+import { selectGamePaused, selectGameSpeed, selectUnreadNotifications, resumeGame } from '../../store/gameSlice';
 import { selectCompanyName, selectCompanyCash, selectCompanyValuation } from '../../store/companySlice';
-import { selectCurrentDate, formatDate } from '../../store/timeSlice';
+import { selectCurrentDate, formatDate, advanceTime } from '../../store/timeSlice';
 import gameEngine from '../../game/GameEngine';
 
 const drawerWidth = 240;
@@ -66,12 +66,31 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
 
   // Start the game engine
   useEffect(() => {
-    gameEngine.start();
+    console.log("GameLayout: Starting game engine. Game paused:", gamePaused);
+    
+    // Ensure game is not paused
+    if (gamePaused) {
+      console.log("GameLayout: Game was paused, resuming...");
+      dispatch(resumeGame());
+    }
+    
+    try {
+      gameEngine.start();
+    } catch (error) {
+      console.error("Error starting game engine:", error);
+    }
+    
+    // Force advance time once to make sure it's working
+    setTimeout(() => {
+      console.log("GameLayout: Forcing initial time advance");
+      dispatch(advanceTime());
+    }, 1000);
     
     return () => {
+      console.log("GameLayout: Stopping game engine on unmount");
       gameEngine.stop();
     };
-  }, []);
+  }, [dispatch, gamePaused]);
 
   // Handle showing notifications
   useEffect(() => {
@@ -98,10 +117,12 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
   };
 
   const togglePauseGame = () => {
+    console.log("Toggling game pause state");
     gameEngine.togglePause();
   };
 
   const changeGameSpeed = (speed) => {
+    console.log("Changing game speed to:", speed);
     gameEngine.changeGameSpeed(speed);
   };
 
