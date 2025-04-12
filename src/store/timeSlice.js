@@ -5,6 +5,7 @@ const initialState = {
   monthsPassed: 0,
   yearsPassed: 0,
   realTimeInterval: null, // Used to store the interval ID for game speed
+  gameSpeed: 1, // Added game speed to time slice
 };
 
 export const timeSlice = createSlice({
@@ -30,6 +31,10 @@ export const timeSlice = createSlice({
     setRealTimeInterval: (state, action) => {
       state.realTimeInterval = action.payload;
     },
+    // Added game speed action
+    setGameSpeed: (state, action) => {
+      state.gameSpeed = action.payload;
+    },
     resetTime: () => initialState,
     setDate: (state, action) => {
       // For testing or special events
@@ -51,6 +56,7 @@ export const timeSlice = createSlice({
 export const {
   advanceTime,
   setRealTimeInterval,
+  setGameSpeed, // Export the new action
   resetTime,
   setDate,
 } = timeSlice.actions;
@@ -60,6 +66,7 @@ export const selectCurrentDate = (state) => state.time.currentDate;
 export const selectMonthsPassed = (state) => state.time.monthsPassed;
 export const selectYearsPassed = (state) => state.time.yearsPassed;
 export const selectRealTimeInterval = (state) => state.time.realTimeInterval;
+export const selectGameSpeed = (state) => state.time.gameSpeed; // Add game speed selector
 
 // Helper functions for formatting dates
 export const formatDate = (dateString) => {
