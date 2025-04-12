@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import {
   Box,
   Grid,
@@ -40,8 +40,13 @@ import {
 
 import { selectCompanyName, selectCompanyCash, selectCompanyValuation, selectEmployees, selectServers, selectTotalUsers, selectFinancialHistory } from '../../store/companySlice';
 import { selectActiveProducts } from '../../store/productsSlice';
-import { selectCurrentDate, formatDate } from '../../store/timeSlice';
+import { selectCurrentDate, formatDate, advanceTime } from '../../store/timeSlice';
 import { selectTopCompanies, selectActiveEvents } from '../../store/marketSlice';
+import { resumeGame } from '../../store/gameSlice';
+import gameEngine from '../../game/GameEngine';
+
+// Import Debug Panel
+import DebugPanel from '../Debug/DebugPanel';
 
 // Register Chart.js components
 ChartJS.register(
@@ -55,6 +60,7 @@ ChartJS.register(
 );
 
 const Dashboard = () => {
+  const dispatch = useDispatch();
   const companyName = useSelector(selectCompanyName);
   const companyCash = useSelector(selectCompanyCash);
   const companyValuation = useSelector(selectCompanyValuation);
@@ -68,6 +74,29 @@ const Dashboard = () => {
   const activeEvents = useSelector(state => selectActiveEvents(state, currentDate));
   
   const [chartTab, setChartTab] = useState(0);
+  const [showDebug, setShowDebug] = useState(true); // Show debug panel by default
+  
+  // Ensure time advances even if automatic updates are not working
+  useEffect(() => {
+    // Make sure game is not paused and game engine is running
+    dispatch(resumeGame());
+    
+    // Check if time is advancing, if not, start a manual timer
+    const currentDateValue = currentDate;
+    const timeCheckInterval = setInterval(() => {
+      // If date hasn't changed in 10 seconds, force an update
+      if (currentDateValue === currentDate) {
+        console.log("Time appears stuck, forcing update...");
+        dispatch(advanceTime());
+        gameEngine.update(); // Force a full game update
+      }
+    }, 10000); // Check every 10 seconds
+    
+    // Cleanup
+    return () => {
+      clearInterval(timeCheckInterval);
+    };
+  }, [dispatch, currentDate]);
   
   // Format data for charts
   const prepareChartData = () => {
@@ -201,6 +230,12 @@ const Dashboard = () => {
     }
   };
   
+  // Handle manual time advancement
+  const forceAdvanceTime = () => {
+    console.log("Manually advancing time...");
+    dispatch(advanceTime());
+  };
+  
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -208,7 +243,30 @@ const Dashboard = () => {
       </Typography>
       <Typography variant="subtitle1" gutterBottom>
         {formatDate(currentDate)}
+        <Button 
+          variant="outlined" 
+          size="small" 
+          onClick={forceAdvanceTime}
+          sx={{ ml: 2 }}
+        >
+          Advance Time
+        </Button>
       </Typography>
+      
+      {/* Debug Panel - Only visible during development */}
+      {process.env.NODE_ENV !== 'production' && showDebug && (
+        <Box sx={{ mb: 3 }}>
+          <DebugPanel />
+          <Button 
+            variant="outlined" 
+            size="small" 
+            onClick={() => setShowDebug(false)}
+            sx={{ mt: 1 }}
+          >
+            Hide Debug Panel
+          </Button>
+        </Box>
+      )}
       
       {/* Key Stats */}
       <Grid container spacing={3} sx={{ mb: 4, mt: 1 }}>
@@ -218,7 +276,9 @@ const Dashboard = () => {
               <Avatar sx={{ bgcolor: 'primary.main', mr: 1 }}>
                 <MoneyIcon />
               </Avatar>
-              <Typography variant="h6">Cash</Typography>
+              <Typography variant="h6">
+                Cash
+              </Typography>
             </Box>
             <Typography variant="h4" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               ${companyCash.toLocaleString()}
