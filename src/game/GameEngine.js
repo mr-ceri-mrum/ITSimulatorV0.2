@@ -4,6 +4,7 @@ import {
   setRealTimeInterval,
   selectCurrentDate,
   selectGameSpeed,
+  setGameSpeed,
 } from '../store/timeSlice';
 import {
   updateCash,
@@ -36,6 +37,7 @@ import {
 import {
   addNotification,
   pauseGame,
+  resumeGame,
   selectGamePaused,
   saveGame,
   unlockAchievement,
