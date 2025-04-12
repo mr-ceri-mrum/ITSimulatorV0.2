@@ -47,21 +47,32 @@ class GameEngine {
   constructor() {
     this.intervalId = null;
     this.lastUpdateTime = Date.now();
+    
+    // Debug counters
+    this.updateCount = 0;
+    this.lastLogTime = Date.now();
+    
+    console.log("GameEngine instance created");
   }
 
   start() {
     // Clear any existing interval
     this.stop();
+    
+    console.log("GameEngine.start() called");
 
     // Initialize the game update loop
     this.updateLoop();
   }
 
   stop() {
+    console.log("GameEngine.stop() called");
+    
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
       store.dispatch(setRealTimeInterval(null));
+      console.log("Interval cleared");
     }
   }
 
@@ -70,8 +81,11 @@ class GameEngine {
     const gameSpeed = selectGameSpeed(state);
     const gameIsPaused = selectGamePaused(state);
 
+    console.log("updateLoop called. Game speed:", gameSpeed, "Paused:", gameIsPaused);
+
     // If game is paused, don't set up interval
     if (gameIsPaused) {
+      console.log("Game is paused, not setting interval");
       return;
     }
 
@@ -80,26 +94,62 @@ class GameEngine {
     // At faster speeds, we'll divide this time accordingly
     const baseMonthDuration = 120000; // 2 minutes in milliseconds
     const updateInterval = baseMonthDuration / gameSpeed;
+    
+    console.log("Setting interval with duration:", updateInterval, "ms");
 
     // Set up interval for game updates
-    this.intervalId = setInterval(() => this.update(), updateInterval);
+    this.intervalId = setInterval(() => {
+      console.log("Interval triggered update");
+      this.update();
+    }, updateInterval);
+    
     store.dispatch(setRealTimeInterval(this.intervalId));
+    
+    // Debug - also set a much faster interval for testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log("DEV MODE: Adding faster test update");
+      // Force an immediate update for testing
+      setTimeout(() => {
+        console.log("Forcing immediate update for testing");
+        this.update();
+      }, 5000); // After 5 seconds
+    }
   }
 
   update() {
+    // Increment update counter
+    this.updateCount++;
+    
+    // Log every 10 seconds for debugging
+    const now = Date.now();
+    if (now - this.lastLogTime > 10000) {
+      console.log(`Game updates in last 10 seconds: ${this.updateCount}`);
+      this.updateCount = 0;
+      this.lastLogTime = now;
+    }
+    
     const state = store.getState();
     const gameIsPaused = selectGamePaused(state);
+    
+    console.log("GameEngine.update() called. Game paused:", gameIsPaused);
 
     // Skip update if game is paused
     if (gameIsPaused) {
+      console.log("Game paused, skipping update");
       return;
     }
 
     // Get current game date
     const currentDate = selectCurrentDate(state);
+    console.log("Current game date before update:", currentDate);
 
     // Advance time by one month
     store.dispatch(advanceTime());
+    
+    // Log the new date
+    const newState = store.getState();
+    const newDate = selectCurrentDate(newState);
+    console.log("New game date after update:", newDate);
 
     // Update market conditions
     store.dispatch(updateMarketTrends({ date: currentDate }));
@@ -125,6 +175,8 @@ class GameEngine {
 
     // Autosave the game
     store.dispatch(saveGame());
+    
+    console.log("GameEngine.update() completed");
   }
 
   updatePlayerProducts(currentDate) {
@@ -438,6 +490,8 @@ class GameEngine {
   
   // Helper method to change game speed
   changeGameSpeed(speed) {
+    console.log(`Changing game speed from ${store.getState().time.gameSpeed}x to ${speed}x`);
+    
     // Update speed in Redux store
     store.dispatch(setGameSpeed(speed));
     
@@ -451,6 +505,8 @@ class GameEngine {
     const state = store.getState();
     const isPaused = selectGamePaused(state);
     
+    console.log(`Toggling pause state. Current state: ${isPaused ? 'paused' : 'running'}`);
+    
     if (isPaused) {
       store.dispatch(resumeGame());
       this.start();
@@ -458,6 +514,22 @@ class GameEngine {
       store.dispatch(pauseGame());
       this.stop();
     }
+  }
+  
+  // DEBUGGING: Force an immediate time update
+  forceTimeUpdate() {
+    console.log("Forcing time update...");
+    store.dispatch(advanceTime());
+    const newDate = selectCurrentDate(store.getState());
+    console.log("New game date after forced update:", newDate);
+    
+    // Also send a notification to confirm the action worked
+    store.dispatch(addNotification({
+      message: `Time manually advanced to ${newDate}`,
+      type: 'info'
+    }));
+    
+    return newDate;
   }
 }
 
