@@ -97,9 +97,9 @@ class GameEngine {
     }
 
     // Calculate update interval based on game speed
-    // One month takes 5 minutes (300,000ms) at 1x speed
-    // This is slower than original, making it more playable
-    const baseMonthDuration = 300000; // 5 minutes in milliseconds
+    // One month takes 10 minutes (600,000ms) at 1x speed
+    // This is much slower than original, making it more playable
+    const baseMonthDuration = 600000; // 10 minutes in milliseconds
     const updateInterval = baseMonthDuration / gameSpeed;
     
     console.log("Setting interval with duration:", updateInterval, "ms");
@@ -120,18 +120,7 @@ class GameEngine {
     // Store the interval ID in Redux
     store.dispatch(setRealTimeInterval(this.intervalId));
     
-    // Debug - also set a much faster interval for testing
-    if (process.env.NODE_ENV === 'development') {
-      console.log("DEV MODE: Adding faster test update");
-      // Force an immediate update for testing
-      setTimeout(() => {
-        const currentState = store.getState();
-        if (!selectGamePaused(currentState)) {
-          console.log("Forcing immediate update for testing");
-          this.update();
-        }
-      }, 5000); // After 5 seconds
-    }
+    // No more immediate update for testing - this helps prevent "waves" of updates
   }
 
   update() {
@@ -214,6 +203,8 @@ class GameEngine {
     let totalUsers = 0;
     let totalRevenue = 0;
 
+    console.log("Updating products with marketing budget: $", marketingBudget);
+
     activeProducts.forEach(product => {
       // Calculate product growth based on:
       // 1. Product quality
@@ -243,21 +234,30 @@ class GameEngine {
         -0.2 // Users leave if resources are insufficient
       );
       
-      // Marketing factor
+      // Marketing factor - enhanced for better effectiveness
       // Higher marketing budget increases user acquisition
-      // Base marketing cost per user: $5-20 (varies by market saturation)
+      // Base marketing cost per user: $1-5 (varies by market saturation) - lowered to make marketing more effective
       const marketSize = category ? (marketSizes[category] || 0) : 0;
       const marketMaxSize = product.type ? PRODUCT_TYPES[product.type]?.maxMarketSize || 0 : 0;
       const marketSaturation = marketSize / Math.max(1, marketMaxSize);
       
-      // Cost per user increases as market saturates
-      const costPerUser = 5 + (15 * marketSaturation);
-      const potentialNewUsersFromMarketing = Math.floor(marketingBudget / costPerUser);
+      // Cost per user increases as market saturates (reduced from original values)
+      const costPerUser = 1 + (4 * marketSaturation);
+      
+      // Allocate marketing budget proportionally to each product
+      // This ensures marketing works even with just one product
+      let productMarketingBudget = marketingBudget;
+      if (activeProducts.length > 1) {
+        // Distribute budget based on product user count
+        const totalProductUsers = activeProducts.reduce((sum, p) => sum + p.users, 1); // Add 1 to avoid division by zero
+        productMarketingBudget = (product.users / totalProductUsers) * marketingBudget;
+      }
+      
+      const potentialNewUsersFromMarketing = Math.floor(productMarketingBudget / costPerUser);
       
       // More effective marketing for higher quality products
-      const marketingFactor = Math.min(
-        0.2, // Cap marketing effect at 20% growth per month
-        (potentialNewUsersFromMarketing / Math.max(1, product.users)) * (product.quality / 10)
+      const marketingFactor = (
+        (potentialNewUsersFromMarketing / Math.max(1000, product.users)) * (product.quality / 5)
       );
       
       // Calculate total monthly growth rate
@@ -271,8 +271,23 @@ class GameEngine {
       // Apply random fluctuation (-2% to +2%)
       const finalGrowthRate = monthlyGrowthRate + (Math.random() * 0.04 - 0.02);
       
+      console.log(`Product ${product.name} growth factors:`, {
+        quality: qualityFactor - 0.5,
+        trend: marketTrendFactor - 1,
+        resource: resourceFactor,
+        marketing: marketingFactor,
+        final: finalGrowthRate
+      });
+      
       // Calculate new user count
       let newUsers = Math.floor(product.users * (1 + finalGrowthRate));
+      
+      // Ensure minimum users for new products with marketing
+      if (product.users < 100 && marketingBudget > 10000) {
+        // Give a minimum number of users for new products with marketing
+        const minNewUsers = Math.floor(marketingBudget / 100);
+        newUsers = Math.max(newUsers, minNewUsers);
+      }
       
       // Ensure we don't exceed resource constraints
       newUsers = Math.min(newUsers, resourceConstraint);
@@ -284,6 +299,8 @@ class GameEngine {
       
       // Ensure non-negative users
       newUsers = Math.max(0, newUsers);
+      
+      console.log(`Product ${product.name}: ${product.users} -> ${newUsers} users`);
       
       // Update product users
       store.dispatch(updateProductUsers({
