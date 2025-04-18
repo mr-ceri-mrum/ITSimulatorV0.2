@@ -2,11 +2,11 @@ import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
   name: '',
-  cash: 1000000, // Starting capital: $1,000,000
-  valuation: 1000000,
-  employees: 0,
-  servers: 0,
-  marketingBudget: 0,
+  cash: 10000000, // Starting capital: $10,000,000 (increased from $1M)
+  valuation: 10000000, // Initial valuation matched to cash
+  employees: 5, // Start with a few employees
+  servers: 200, // Start with some servers
+  marketingBudget: 50000, // Start with some marketing budget
   totalUsers: 0,
   reputation: 50, // 0-100 scale
   foundedDate: '2004-01-01', // January 2004 as per game description
