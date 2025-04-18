@@ -61,6 +61,13 @@ class GameEngine {
     
     console.log("GameEngine.start() called");
 
+    // Check if the game is paused before starting the update loop
+    const state = store.getState();
+    if (selectGamePaused(state)) {
+      console.log("Game is paused, not starting the update loop");
+      return;
+    }
+
     // Initialize the game update loop
     this.updateLoop();
   }
@@ -90,19 +97,27 @@ class GameEngine {
     }
 
     // Calculate update interval based on game speed
-    // We want one month to take 2 minutes (120,000ms) at 1x speed
-    // At faster speeds, we'll divide this time accordingly
-    const baseMonthDuration = 120000; // 2 minutes in milliseconds
+    // One month takes 5 minutes (300,000ms) at 1x speed
+    // This is slower than original, making it more playable
+    const baseMonthDuration = 300000; // 5 minutes in milliseconds
     const updateInterval = baseMonthDuration / gameSpeed;
     
     console.log("Setting interval with duration:", updateInterval, "ms");
 
     // Set up interval for game updates
     this.intervalId = setInterval(() => {
+      // Check if the game is paused before proceeding with update
+      const currentState = store.getState();
+      if (selectGamePaused(currentState)) {
+        console.log("Game is paused, skipping interval update");
+        return;
+      }
+      
       console.log("Interval triggered update");
       this.update();
     }, updateInterval);
     
+    // Store the interval ID in Redux
     store.dispatch(setRealTimeInterval(this.intervalId));
     
     // Debug - also set a much faster interval for testing
@@ -110,8 +125,11 @@ class GameEngine {
       console.log("DEV MODE: Adding faster test update");
       // Force an immediate update for testing
       setTimeout(() => {
-        console.log("Forcing immediate update for testing");
-        this.update();
+        const currentState = store.getState();
+        if (!selectGamePaused(currentState)) {
+          console.log("Forcing immediate update for testing");
+          this.update();
+        }
       }, 5000); // After 5 seconds
     }
   }
@@ -492,12 +510,28 @@ class GameEngine {
   changeGameSpeed(speed) {
     console.log(`Changing game speed from ${store.getState().time.gameSpeed}x to ${speed}x`);
     
+    // Only proceed if the speed is actually changing
+    if (speed === store.getState().time.gameSpeed) {
+      console.log("Game speed unchanged, no need to restart the engine");
+      return;
+    }
+    
     // Update speed in Redux store
     store.dispatch(setGameSpeed(speed));
     
-    // Restart the game loop with new speed
-    this.stop();
-    this.start();
+    // Only restart the game loop if the game is not paused
+    if (!selectGamePaused(store.getState())) {
+      // Restart the game loop with new speed
+      this.stop();
+      this.start();
+      
+      store.dispatch(addNotification({
+        message: `Game speed changed to ${speed}x`,
+        type: 'info'
+      }));
+    } else {
+      console.log("Game is paused, not restarting the loop");
+    }
   }
   
   // Helper method to toggle pause state
@@ -508,11 +542,23 @@ class GameEngine {
     console.log(`Toggling pause state. Current state: ${isPaused ? 'paused' : 'running'}`);
     
     if (isPaused) {
+      // Resume the game
       store.dispatch(resumeGame());
       this.start();
+      
+      store.dispatch(addNotification({
+        message: `Game resumed at ${state.time.gameSpeed}x speed`,
+        type: 'info'
+      }));
     } else {
+      // Pause the game
       store.dispatch(pauseGame());
       this.stop();
+      
+      store.dispatch(addNotification({
+        message: 'Game paused',
+        type: 'info'
+      }));
     }
   }
   
