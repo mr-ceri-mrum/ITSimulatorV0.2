@@ -41,7 +41,7 @@ import Settings from '../Settings/Settings';
 import Notifications from '../Notifications/Notifications';
 import GameControls from '../GameControls/GameControls';
 
-import { selectGamePaused, selectGameSpeed, selectUnreadNotifications, resumeGame } from '../../store/gameSlice';
+import { selectGamePaused, selectGameSpeed, selectUnreadNotifications, resumeGame, pauseGame } from '../../store/gameSlice';
 import { selectCompanyName, selectCompanyCash, selectCompanyValuation } from '../../store/companySlice';
 import { selectCurrentDate, formatDate, advanceTime } from '../../store/timeSlice';
 import gameEngine from '../../game/GameEngine';
@@ -68,23 +68,26 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
   useEffect(() => {
     console.log("GameLayout: Starting game engine. Game paused:", gamePaused);
     
-    // Ensure game is not paused
-    if (gamePaused) {
-      console.log("GameLayout: Game was paused, resuming...");
-      dispatch(resumeGame());
-    }
-    
+    // Ensure game starts with proper paused state
     try {
-      gameEngine.start();
+      if (gamePaused) {
+        console.log("GameLayout: Ensuring game engine is stopped as game is paused");
+        gameEngine.stop();
+      } else {
+        console.log("GameLayout: Starting game engine as game is not paused");
+        gameEngine.start();
+        
+        // Force advance time once to make sure it's working
+        setTimeout(() => {
+          if (!gamePaused) {
+            console.log("GameLayout: Forcing initial time advance");
+            dispatch(advanceTime());
+          }
+        }, 1000);
+      }
     } catch (error) {
-      console.error("Error starting game engine:", error);
+      console.error("Error managing game engine:", error);
     }
-    
-    // Force advance time once to make sure it's working
-    setTimeout(() => {
-      console.log("GameLayout: Forcing initial time advance");
-      dispatch(advanceTime());
-    }, 1000);
     
     return () => {
       console.log("GameLayout: Stopping game engine on unmount");
@@ -117,13 +120,21 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
   };
 
   const togglePauseGame = () => {
-    console.log("Toggling game pause state");
+    console.log("Toggling game pause state from UI");
+    
+    // Use gameEngine's toggle method to ensure state consistency
     gameEngine.togglePause();
   };
 
   const changeGameSpeed = (speed) => {
     console.log("Changing game speed to:", speed);
-    gameEngine.changeGameSpeed(speed);
+    
+    // Only proceed if not paused or speed is actually changing
+    if (!gamePaused || speed !== gameSpeed) {
+      gameEngine.changeGameSpeed(speed);
+    } else {
+      console.log("Game is paused, will apply speed when resumed");
+    }
   };
 
   const renderContent = () => {
@@ -217,6 +228,15 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {formatDate(currentDate)}
+            {gamePaused && (
+              <Typography 
+                variant="subtitle1" 
+                component="span" 
+                sx={{ ml: 2, color: 'warning.main' }}
+              >
+                GAME PAUSED
+              </Typography>
+            )}
           </Typography>
           
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -324,7 +344,11 @@ const GameLayout = ({ toggleTheme, darkMode }) => {
         onClose={() => setSettingsOpen(false)}
       >
         <Box sx={{ width: 320, p: 2 }}>
-          <Settings onClose={() => setSettingsOpen(false)} />
+          <Settings 
+            onClose={() => setSettingsOpen(false)} 
+            toggleTheme={toggleTheme} 
+            darkMode={darkMode} 
+          />
         </Box>
       </Drawer>
       
