@@ -314,12 +314,15 @@ class GameEngine {
       }
       
       // Calculate market share
-      if (category && marketSize > 0) {
-        const marketShare = (newUsers / marketSize) * 100;
-        store.dispatch(updateProductMarketShare({
-          id: product.id,
-          marketSharePercentage: marketShare
-        }));
+      if (category) {
+        const categoryMarketSize = marketSizes[category] || 0;
+        if (categoryMarketSize > 0) {
+          const marketShare = (newUsers / categoryMarketSize) * 100;
+          store.dispatch(updateProductMarketShare({
+            id: product.id,
+            marketSharePercentage: marketShare
+          }));
+        }
       }
       
       // Calculate revenue ($12 per user per month as per game description)
