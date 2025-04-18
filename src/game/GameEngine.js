@@ -47,6 +47,7 @@ class GameEngine {
   constructor() {
     this.intervalId = null;
     this.lastUpdateTime = Date.now();
+    this.isRunning = false;
     
     // Debug counters
     this.updateCount = 0;
@@ -68,12 +69,26 @@ class GameEngine {
       return;
     }
 
+    // Set flag to indicate engine is running
+    this.isRunning = true;
+
     // Initialize the game update loop
     this.updateLoop();
+    
+    // Schedule a check to ensure interval is running
+    setTimeout(() => {
+      if (this.isRunning && !this.intervalId) {
+        console.log("Interval failed to start, restarting game engine");
+        this.start();
+      }
+    }, 2000);
   }
 
   stop() {
     console.log("GameEngine.stop() called");
+    
+    // Set flag to indicate engine is stopped
+    this.isRunning = false;
     
     if (this.intervalId) {
       clearInterval(this.intervalId);
@@ -93,6 +108,7 @@ class GameEngine {
     // If game is paused, don't set up interval
     if (gameIsPaused) {
       console.log("Game is paused, not setting interval");
+      this.isRunning = false;
       return;
     }
 
@@ -104,8 +120,16 @@ class GameEngine {
     
     console.log("Setting interval with duration:", updateInterval, "ms");
 
-    // Set up interval for game updates
+    // Set up interval for game updates with self-check
     this.intervalId = setInterval(() => {
+      // Self-check mechanism
+      if (!this.isRunning) {
+        console.log("Engine was stopped but interval still running, clearing interval");
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+        return;
+      }
+      
       // Check if the game is paused before proceeding with update
       const currentState = store.getState();
       if (selectGamePaused(currentState)) {
@@ -120,7 +144,19 @@ class GameEngine {
     // Store the interval ID in Redux
     store.dispatch(setRealTimeInterval(this.intervalId));
     
-    // No more immediate update for testing - this helps prevent "waves" of updates
+    // Create heartbeat to keep game running
+    if (!this.heartbeatId) {
+      this.heartbeatId = setInterval(() => {
+        const heartbeatState = store.getState();
+        const isPaused = selectGamePaused(heartbeatState);
+        
+        // Check if the interval should be running but isn't
+        if (!isPaused && this.isRunning && !this.intervalId) {
+          console.log("Heartbeat detected missing interval, restarting update loop");
+          this.updateLoop();
+        }
+      }, 5000); // Check every 5 seconds
+    }
   }
 
   update() {
@@ -285,7 +321,7 @@ class GameEngine {
       // Ensure minimum users for new products with marketing
       if (product.users < 100 && marketingBudget > 10000) {
         // Give a minimum number of users for new products with marketing
-        const minNewUsers = Math.floor(marketingBudget / 100);
+        const minNewUsers = Math.floor(marketingBudget / 50); // More aggressive minimum
         newUsers = Math.max(newUsers, minNewUsers);
       }
       
@@ -561,6 +597,11 @@ class GameEngine {
     if (isPaused) {
       // Resume the game
       store.dispatch(resumeGame());
+      
+      // Set flag to indicate engine is running
+      this.isRunning = true;
+      
+      // Restart the update loop
       this.start();
       
       store.dispatch(addNotification({
@@ -570,6 +611,11 @@ class GameEngine {
     } else {
       // Pause the game
       store.dispatch(pauseGame());
+      
+      // Set flag to indicate engine is stopped
+      this.isRunning = false;
+      
+      // Stop the update loop
       this.stop();
       
       store.dispatch(addNotification({
