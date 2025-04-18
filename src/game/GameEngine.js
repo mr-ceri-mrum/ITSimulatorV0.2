@@ -46,8 +46,8 @@ import {
 class GameEngine {
   constructor() {
     this.intervalId = null;
+    this.watchdogId = null;
     this.lastUpdateTime = Date.now();
-    this.isRunning = false;
     
     // Debug counters
     this.updateCount = 0;
@@ -57,128 +57,95 @@ class GameEngine {
   }
 
   start() {
-    // Clear any existing interval
-    this.stop();
-    
     console.log("GameEngine.start() called");
-
-    // Check if the game is paused before starting the update loop
+    
+    // Clean up any existing intervals
+    this.cleanup();
+    
     const state = store.getState();
     if (selectGamePaused(state)) {
-      console.log("Game is paused, not starting the update loop");
+      console.log("Game is paused, not starting engine");
       return;
     }
-
-    // Set flag to indicate engine is running
-    this.isRunning = true;
-
-    // Initialize the game update loop
-    this.updateLoop();
     
-    // Schedule a check to ensure interval is running
-    setTimeout(() => {
-      if (this.isRunning && !this.intervalId) {
-        console.log("Interval failed to start, restarting game engine");
-        this.start();
-      }
-    }, 2000);
+    // Set up a simple watchdog timer that ensures the game is running
+    this.setupWatchdog();
+    
+    // Start the game loop
+    this.startGameLoop();
   }
-
-  stop() {
-    console.log("GameEngine.stop() called");
+  
+  cleanup() {
+    console.log("Cleaning up intervals");
     
-    // Set flag to indicate engine is stopped
-    this.isRunning = false;
-    
+    // Clear main interval
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
       store.dispatch(setRealTimeInterval(null));
-      console.log("Interval cleared");
+    }
+    
+    // Clear watchdog
+    if (this.watchdogId) {
+      clearInterval(this.watchdogId);
+      this.watchdogId = null;
     }
   }
-
-  updateLoop() {
+  
+  setupWatchdog() {
+    // Set up a watchdog timer to ensure game keeps running
+    this.watchdogId = setInterval(() => {
+      const state = store.getState();
+      const isPaused = selectGamePaused(state);
+      
+      if (!isPaused && !this.intervalId) {
+        console.log("Watchdog detected game should be running but isn't, restarting");
+        this.startGameLoop();
+      }
+    }, 5000); // Check every 5 seconds
+  }
+  
+  startGameLoop() {
     const state = store.getState();
     const gameSpeed = selectGameSpeed(state);
-    const gameIsPaused = selectGamePaused(state);
-
-    console.log("updateLoop called. Game speed:", gameSpeed, "Paused:", gameIsPaused);
-
-    // If game is paused, don't set up interval
-    if (gameIsPaused) {
-      console.log("Game is paused, not setting interval");
-      this.isRunning = false;
-      return;
-    }
-
-    // Calculate update interval based on game speed
-    // One month takes 10 minutes (600,000ms) at 1x speed
-    // This is much slower than original, making it more playable
-    const baseMonthDuration = 600000; // 10 minutes in milliseconds
+    
+    // Game speed: 1 month = 3 minutes at 1x speed
+    const baseMonthDuration = 180000; // 3 minutes (180,000 ms)
     const updateInterval = baseMonthDuration / gameSpeed;
     
-    console.log("Setting interval with duration:", updateInterval, "ms");
-
-    // Set up interval for game updates with self-check
+    console.log(`Starting game loop with ${updateInterval}ms interval (${gameSpeed}x speed)`);
+    
+    // Create a new interval
     this.intervalId = setInterval(() => {
-      // Self-check mechanism
-      if (!this.isRunning) {
-        console.log("Engine was stopped but interval still running, clearing interval");
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-        return;
-      }
-      
-      // Check if the game is paused before proceeding with update
       const currentState = store.getState();
-      if (selectGamePaused(currentState)) {
-        console.log("Game is paused, skipping interval update");
-        return;
+      if (!selectGamePaused(currentState)) {
+        this.update();
       }
-      
-      console.log("Interval triggered update");
-      this.update();
     }, updateInterval);
     
     // Store the interval ID in Redux
     store.dispatch(setRealTimeInterval(this.intervalId));
     
-    // Create heartbeat to keep game running
-    if (!this.heartbeatId) {
-      this.heartbeatId = setInterval(() => {
-        const heartbeatState = store.getState();
-        const isPaused = selectGamePaused(heartbeatState);
-        
-        // Check if the interval should be running but isn't
-        if (!isPaused && this.isRunning && !this.intervalId) {
-          console.log("Heartbeat detected missing interval, restarting update loop");
-          this.updateLoop();
-        }
-      }, 5000); // Check every 5 seconds
-    }
+    // Force first update immediately for responsiveness
+    setTimeout(() => {
+      const currentState = store.getState();
+      if (!selectGamePaused(currentState)) {
+        this.update();
+      }
+    }, 1000);
+  }
+
+  stop() {
+    console.log("GameEngine.stop() called");
+    this.cleanup();
   }
 
   update() {
-    // Increment update counter
-    this.updateCount++;
-    
-    // Log every 10 seconds for debugging
-    const now = Date.now();
-    if (now - this.lastLogTime > 10000) {
-      console.log(`Game updates in last 10 seconds: ${this.updateCount}`);
-      this.updateCount = 0;
-      this.lastLogTime = now;
-    }
+    console.log("GameEngine.update() called");
     
     const state = store.getState();
-    const gameIsPaused = selectGamePaused(state);
-    
-    console.log("GameEngine.update() called. Game paused:", gameIsPaused);
-
-    // Skip update if game is paused
-    if (gameIsPaused) {
-      console.log("Game paused, skipping update");
+    if (selectGamePaused(state)) {
+      console.log("Game is paused, skipping update");
       return;
     }
 
@@ -190,8 +157,7 @@ class GameEngine {
     store.dispatch(advanceTime());
     
     // Log the new date
-    const newState = store.getState();
-    const newDate = selectCurrentDate(newState);
+    const newDate = selectCurrentDate(store.getState());
     console.log("New game date after update:", newDate);
 
     // Update market conditions
@@ -239,15 +205,9 @@ class GameEngine {
     let totalUsers = 0;
     let totalRevenue = 0;
 
-    console.log("Updating products with marketing budget: $", marketingBudget);
+    console.log("Marketing budget: $" + marketingBudget);
 
     activeProducts.forEach(product => {
-      // Calculate product growth based on:
-      // 1. Product quality
-      // 2. Market trends for the product category
-      // 3. Resources (employees and servers)
-      // 4. Marketing budget
-
       // Quality factor (0.5 to 1.5)
       const qualityFactor = (product.quality / 10) * 2;
 
@@ -262,7 +222,7 @@ class GameEngine {
       const maxUsersByServers = servers * 100;
       const resourceConstraint = Math.min(maxUsersByEmployees, maxUsersByServers);
       
-      // If we're near the resource limit, growth slows
+      // Resource factor based on capacity
       const resourceFactor = (
         resourceConstraint > product.users * 1.5 ? 1.0 :
         resourceConstraint > product.users * 1.1 ? 0.7 :
@@ -270,65 +230,49 @@ class GameEngine {
         -0.2 // Users leave if resources are insufficient
       );
       
-      // Marketing factor - enhanced for better effectiveness
-      // Higher marketing budget increases user acquisition
-      // Base marketing cost per user: $1-5 (varies by market saturation) - lowered to make marketing more effective
-      const marketSize = category ? (marketSizes[category] || 0) : 0;
-      const marketMaxSize = product.type ? PRODUCT_TYPES[product.type]?.maxMarketSize || 0 : 0;
-      const marketSaturation = marketSize / Math.max(1, marketMaxSize);
+      // SIMPLIFIED MARKETING EFFECT
+      // Direct impact based on marketing budget
+      let marketingEffect = 0;
       
-      // Cost per user increases as market saturates (reduced from original values)
-      const costPerUser = 1 + (4 * marketSaturation);
-      
-      // Allocate marketing budget proportionally to each product
-      // This ensures marketing works even with just one product
-      let productMarketingBudget = marketingBudget;
-      if (activeProducts.length > 1) {
-        // Distribute budget based on product user count
-        const totalProductUsers = activeProducts.reduce((sum, p) => sum + p.users, 1); // Add 1 to avoid division by zero
-        productMarketingBudget = (product.users / totalProductUsers) * marketingBudget;
+      if (marketingBudget > 0) {
+        // Simple formula: every $1000 in marketing can attract up to 100 new users
+        // More effective for high-quality products
+        const baseMarketingUsers = (marketingBudget / 1000) * 100;
+        const qualityMultiplier = product.quality / 5; // 0.2 to 2.0 multiplier
+        marketingEffect = baseMarketingUsers * qualityMultiplier;
       }
       
-      const potentialNewUsersFromMarketing = Math.floor(productMarketingBudget / costPerUser);
-      
-      // More effective marketing for higher quality products
-      const marketingFactor = (
-        (potentialNewUsersFromMarketing / Math.max(1000, product.users)) * (product.quality / 5)
-      );
-      
-      // Calculate total monthly growth rate
-      const monthlyGrowthRate = (
-        (qualityFactor - 0.5) + // Convert quality factor to a percentage change
-        (marketTrendFactor - 1) + // Convert trend factor to a percentage change
+      // Calculate monthly growth percentage from quality and market factors
+      const baseGrowthRate = (
+        (qualityFactor - 0.5) + 
+        (marketTrendFactor - 1) + 
         resourceFactor +
-        marketingFactor
+        0.01 // Small base growth
       );
       
-      // Apply random fluctuation (-2% to +2%)
-      const finalGrowthRate = monthlyGrowthRate + (Math.random() * 0.04 - 0.02);
+      // Apply small random fluctuation
+      const growthRate = baseGrowthRate + (Math.random() * 0.04 - 0.02);
       
-      console.log(`Product ${product.name} growth factors:`, {
-        quality: qualityFactor - 0.5,
-        trend: marketTrendFactor - 1,
-        resource: resourceFactor,
-        marketing: marketingFactor,
-        final: finalGrowthRate
-      });
+      // Calculate new users from growth percentage
+      let usersFromGrowth = Math.floor(product.users * (1 + growthRate));
       
-      // Calculate new user count
-      let newUsers = Math.floor(product.users * (1 + finalGrowthRate));
+      // Add users from marketing (direct addition, not percentage)
+      let newUsers = usersFromGrowth;
       
-      // Ensure minimum users for new products with marketing
-      if (product.users < 100 && marketingBudget > 10000) {
-        // Give a minimum number of users for new products with marketing
-        const minNewUsers = Math.floor(marketingBudget / 50); // More aggressive minimum
-        newUsers = Math.max(newUsers, minNewUsers);
+      // For new products with very few users, marketing has stronger effect
+      if (product.users < 100 && marketingBudget > 0) {
+        // Direct boost for new products
+        newUsers = Math.max(newUsers, Math.floor(marketingEffect));
+      } else {
+        // For established products, add marketing effect
+        newUsers = Math.min(
+          resourceConstraint, // Cap by resource limit
+          newUsers + Math.floor(marketingEffect * (1 - (product.users / 1000000)))
+        );
       }
-      
-      // Ensure we don't exceed resource constraints
-      newUsers = Math.min(newUsers, resourceConstraint);
       
       // Ensure we don't exceed market maximum
+      const marketMaxSize = product.type ? PRODUCT_TYPES[product.type]?.maxMarketSize || 0 : 0;
       if (marketMaxSize > 0) {
         newUsers = Math.min(newUsers, marketMaxSize);
       }
@@ -336,7 +280,7 @@ class GameEngine {
       // Ensure non-negative users
       newUsers = Math.max(0, newUsers);
       
-      console.log(`Product ${product.name}: ${product.users} -> ${newUsers} users`);
+      console.log(`Product ${product.name}: ${product.users} → ${newUsers} users (${marketingEffect} from marketing)`);
       
       // Update product users
       store.dispatch(updateProductUsers({
@@ -597,11 +541,6 @@ class GameEngine {
     if (isPaused) {
       // Resume the game
       store.dispatch(resumeGame());
-      
-      // Set flag to indicate engine is running
-      this.isRunning = true;
-      
-      // Restart the update loop
       this.start();
       
       store.dispatch(addNotification({
@@ -611,11 +550,6 @@ class GameEngine {
     } else {
       // Pause the game
       store.dispatch(pauseGame());
-      
-      // Set flag to indicate engine is stopped
-      this.isRunning = false;
-      
-      // Stop the update loop
       this.stop();
       
       store.dispatch(addNotification({
